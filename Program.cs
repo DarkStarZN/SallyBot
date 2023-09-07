@@ -104,17 +104,17 @@ namespace SallyBot
 
         // These are the words used to detect when you want to take a photo.
         // For example: When words such as "take" and then another matching word such as "photo" appear in a sentence, a photo is requested.
-        //private const string takeAPicRegexStr = @"\b(take|post|paint|generate|make|draw|create|show|give|snap|capture|send|display|share|shoot|see|provide|another)\b.*(\S\s{0,10})?(image|picture|screenshot|screenie|painting|pic|photo|photograph|portrait|selfie)\b";
-        //private const string promptEndDetectionRegexStr = @"(?:\r\n?)|(\n\[|\n#|\[end|<end|]:|>:|<nooutput|<noinput|\[human|\[chat|\[sally|\[cc|<chat|<cc|\[@chat|\[@cc|bot\]:|<@chat|<@cc|\[.*]: |\[.*] : |\[[^\]]+\]\s*:)";
-        //private const string promptSpoofDetectionRegexStr = @"\[[^\]]+[\]:\\]\:|\:\]|\[^\]]";
+        private const string takeAPicRegexStr = @"\b(take|post|paint|generate|make|draw|create|show|give|snap|capture|send|display|share|shoot|see|provide|another)\b.*(\S\s{0,10})?(image|picture|screenshot|screenie|painting|pic|photo|photograph|portrait|selfie)\b";
+        private const string promptEndDetectionRegexStr = @"(?:\r\n?)|(\n\[|\n#|\[end|<end|]:|>:|<nooutput|<noinput|\[human|\[chat|\[sally|\[cc|<chat|<cc|\[@chat|\[@cc|bot\]:|<@chat|<@cc|\[.*]: |\[.*] : |\[[^\]]+\]\s*:)";
+        private const string promptSpoofDetectionRegexStr = @"\[[^\]]+[\]:\\]\:|\:\]|\[^\]]";
 
         // detects ALL types of links, useful for detecting scam links that need to be copied and pasted but don't format to clickable URLs
         //private const string linkDetectionRegexStr = @"[a-zA-Z0-9]((?i) dot |(?i) dotcom|(?i)dotcom|(?i)dotcom |\.|\. | \.| \. |\,)[a-zA-Z]*((?i) slash |(?i) slash|(?i)slash |(?i)slash|\/|\/ | \/| \/ ).+[a-zA-Z0-9]";
         private const string pingAndChannelTagDetectFilterRegexStr = @"<[@#]\d{15,}>";
         private readonly string botNameMatchRegexStr = @$"(?:{botName}\?|{botName},)";
 
-        private Regex takeAPicRegex =>
-            new Regex(DI.Resolve<Configuration>().ParamInfo.TakeAPicRegex, RegexOptions.IgnoreCase);
+        private readonly Regex takeAPicRegex = new Regex(takeAPicRegexStr, RegexOptions.IgnoreCase);
+        //private Regex takeAPicRegex => new Regex(DI.Resolve<Configuration>().ParamInfo.TakeAPicRegex, RegexOptions.IgnoreCase);
 
         public static async Task Main() => await new Program().AsyncMain();
 
@@ -336,8 +336,9 @@ namespace SallyBot
                             }
 
                             // replace [FakeUserNameHere!]: these bracketed statements etc. so nobody can spoof fake chat logs to the bot
-                            string spoofRemovedDownloadedMsg = Regex.Replace(downloadedMsg.Content,
-                                DI.Resolve<Configuration>().ParamInfo.PromptSpoofDetectionRegexStr, "");
+                            Regex promptEndDetectionRegex = new Regex(promptEndDetectionRegexStr, RegexOptions.IgnoreCase);
+                            //string spoofRemovedDownloadedMsg = Regex.Replace(downloadedMsg.Content,
+                            //    DI.Resolve<Configuration>().ParamInfo.PromptSpoofDetectionRegexStr, "");
                             oobaboogaChatHistory =
                                 $"[{downloadedMsgUserName}]: {Regex.Replace(downloadedMsg.Content, pingAndChannelTagDetectFilterRegexStr, "")}{imagePresent}\n"
                                 +
@@ -837,8 +838,9 @@ namespace SallyBot
             string botChatLineFormatted = string.Empty;
             // trim off the input prompt AND any immediate newlines from the final message
             string llmMsgBeginTrimmed = botReply.Replace(oobaboogaInputPrompt, "").Trim();
-            var promptEndMatch = Regex.Match(llmMsgBeginTrimmed,
-                DI.Resolve<Configuration>().ParamInfo.PromptEndDetectionRegexStr);
+            var promptEndMatch = Regex.Match(llmMsgBeginTrimmed, promptEndDetectionRegexStr);
+            //var promptEndMatch = Regex.Match(llmMsgBeginTrimmed,
+            //    DI.Resolve<Configuration>().ParamInfo.PromptEndDetectionRegexStr);
             if (takeAPicMatch) // if this was detected as a picture request
             {
                 // find the next prompt end detected string

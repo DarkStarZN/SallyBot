@@ -8,6 +8,7 @@ public class Configuration
     public string StableDiffusionUrl { get; set; }
     public string OobServerUrl { get; set; }
     public int OobServerPort { get; set; }
+    public string charPromptImage { get; set; }
     public string BotName { get; set; }
     public ParamInfo ParamInfo { get; set; }
 }
