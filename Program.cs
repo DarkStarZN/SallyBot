@@ -1,26 +1,22 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using System.Timers;
-
-using Discord;
-using Discord.Commands;
-using Discord.WebSocket;
-
-using SocketIOClient;
 using System.IO;
-using SixLabors.ImageSharp;
-using Newtonsoft.Json;
+using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
+using System.Timers;
 using Autofac;
+using AutoFixture;
+using Discord;
+using Discord.Commands;
+using Discord.WebSocket;
+using Newtonsoft.Json;
 using sallybot;
 using SallyBot.Extras;
-using Configuration = sallybot.Configuration;
-
+using SocketIOClient;
 namespace SallyBot
 {
     class Program
@@ -30,32 +26,38 @@ namespace SallyBot
         private SocketIO Socket;
         private DiscordSocketClient Client;
 
-        private static bool dalaiConnected = false;
-        private static int dalaiThinking = 0;
-        private static int oobaboogaThinking = 0;
-        private static int typing = 0;
-        private static int typingTicks = 0;
-        internal static int oobaboogaErrorCount = 0;
-        private static int loopCounts = 0;
-        private static int maxChatHistoryStrLength = 500; // max chat history length (you can go to like 4800 before errors with oobabooga)(subtract character prompt length if you are using one)
+        private static bool dalaiConnected;
+        private static int dalaiThinking;
+        private static int oobaboogaThinking;
+        private static int typing;
+        private static int typingTicks;
+        internal static int oobaboogaErrorCount;
+        private static int loopCounts;
+        private static int
+            maxChatHistoryStrLength =
+                500; // max chat history length (you can go to like 4800 before errors with oobabooga)(subtract character prompt length if you are using one)
 
         //private const string oobServer = "127.0.0.1";
         //private const int oobServerPort = 5000;
 
         // by default, use extension API not the default API
-        private static string oobApiEndpoint = "/api/v1/generate"; // default api is busted atm. enable this with --extensions api in launch args
+        private static string
+            oobApiEndpoint =
+                "/api/v1/generate"; // default api is busted atm. enable this with --extensions api in launch args
 
-        private static bool longMsgWarningGiven = false; // gives a warning for a long msg, but only once
+        private static bool longMsgWarningGiven; // gives a warning for a long msg, but only once
 
-        internal static ulong botUserId = 0; // <-- this is your bot's client ID number inside discord (not the token) and gets set in MainLoop after initialisation
+        internal static ulong
+            botUserId = 0; // <-- this is your bot's client ID number inside discord (not the token) and gets set in MainLoop after initialisation
 
         internal static string botName = "SallyBot";
 
         private static string oobaboogaChatHistory = string.Empty; // <-- chat history saves to this string over time
-       //static internal bool chatHistoryDownloaded = false; // Records if you have downloaded chat history before so it only downloads message history once.
+        //static internal bool chatHistoryDownloaded = false; // Records if you have downloaded chat history before so it only downloads message history once.
 
         // Set to true to disable chat history
-        private static bool chatHistoryDownloaded = false; // Records if you have downloaded chat history before so it only downloads message history once.
+        private static bool
+            chatHistoryDownloaded; // Records if you have downloaded chat history before so it only downloads message history once.
 
 
         //static internal string oobaboogaInputPromptStart = $"### Instruction:\r\n" +
@@ -65,7 +67,7 @@ namespace SallyBot
         //        $"[{botName}]: ";
 
         // You can input your input prompt instructions here. This is where system instructions could go. Otherwise leave blank.
-        private static string oobaboogaInputPromptStart = $"";
+        private static string oobaboogaInputPromptStart = "";
 
         // This is the end of the prompt. Default set to the bot's name in chat to prompt a response from the bot.
         private static string oobaboogaInputPromptEnd = $"[{botName}]:";
@@ -74,7 +76,8 @@ namespace SallyBot
         private static readonly string dalaiInputPromptEnding = $"[{botName}]:";
 
         // Instruction prompt for the LLM to generate an image prompt for stable diffusion
-        private const string inputPromptStartPic = "### Maintain accuracy to the user's prompt. Do not alter the user request. You may use Danbooru tags to describe the image.";
+        private const string inputPromptStartPic =
+            "### Maintain accuracy to the user's prompt. Do not alter the user request. You may use Danbooru tags to describe the image.";
 
         // Prompts the llm to write image tags for the image instruction prompt
         private const string inputPromptEndingPic = "### Description of the requested image:";
@@ -110,14 +113,24 @@ namespace SallyBot
         private const string pingAndChannelTagDetectFilterRegexStr = @"<[@#]\d{15,}>";
         private readonly string botNameMatchRegexStr = @$"(?:{botName}\?|{botName},)";
 
-        private Regex takeAPicRegex => new Regex(DI.Resolve<Configuration>().ParamInfo.TakeAPicRegex, RegexOptions.IgnoreCase);
+        private Regex takeAPicRegex =>
+            new Regex(DI.Resolve<Configuration>().ParamInfo.TakeAPicRegex, RegexOptions.IgnoreCase);
 
         public static async Task Main() => await new Program().AsyncMain();
 
         private async Task AsyncMain()
         {
+            if (!File.Exists("appsettings.json"))
+            {
+                File.WriteAllText("appsettings.json",
+                    JsonConvert.SerializeObject(new Fixture().Create<Configuration>(), Formatting.Indented));
+                Console.WriteLine("appsettings.json not found. Writing dummy config to directory.");
+                Console.ReadKey();
+                return;
+            }
 
-            var configData = JsonConvert.DeserializeObject<sallybot.Configuration>(File.ReadAllText("appsettings.json"));
+            var configData =
+                JsonConvert.DeserializeObject<Configuration>(File.ReadAllText("appsettings.json"));
             DI.Init(builder =>
             {
                 builder.RegisterInstance(configData);
@@ -126,16 +139,16 @@ namespace SallyBot
             try
             {
                 botName = DI.Resolve<Configuration>().BotName;
-                
+
                 Client = new DiscordSocketClient(new DiscordSocketConfig
                 {
                     MessageCacheSize = 1200,
                     LogLevel = LogSeverity.Debug,
                     AlwaysDownloadUsers = true,
                     GatewayIntents =
-                GatewayIntents.MessageContent |
-                GatewayIntents.Guilds |
-                GatewayIntents.GuildMessages
+                        GatewayIntents.MessageContent |
+                        GatewayIntents.Guilds |
+                        GatewayIntents.GuildMessages
                 });
 
                 Client.Log += Client_Log;
@@ -147,7 +160,7 @@ namespace SallyBot
 
                 await Client.StartAsync();
 
-                Loop = new Timer()
+                Loop = new Timer
                 {
                     Interval = 5900,
                     AutoReset = true,
@@ -182,7 +195,8 @@ namespace SallyBot
                 AppDomain.CurrentDomain.FirstChanceException += (sender, eventArgs) =>
                 {
                     Exception ex = eventArgs.Exception;
-                    Console.WriteLine($"\u001b[45;1m[  DISC  ]\u001b[41;1m[  ERR  ]\u001b[0m MSG: {ex.Message} \n WHERE: {ex.StackTrace} \n\n");
+                    Console.WriteLine(
+                        $"\u001b[45;1m[  DISC  ]\u001b[41;1m[  ERR  ]\u001b[0m MSG: {ex.Message} \n WHERE: {ex.StackTrace} \n\n");
                 };
             }
             catch (Exception exception)
@@ -191,8 +205,7 @@ namespace SallyBot
             }
         }
 
-        private static readonly string[] logBlacklist = new string[]
-        {
+        private static readonly string[] logBlacklist = {
             "PRESENCE_UPDATE",
             "TYPING_START",
             "MESSAGE_CREATE",
@@ -213,7 +226,7 @@ namespace SallyBot
         private async Task Client_Log(LogMessage Msg)
         {
             if (Msg.Message != null
-              && logBlacklist.All(x => !Msg.Message.Contains(x)))
+                && logBlacklist.All(x => !Msg.Message.Contains(x)))
                 Console.WriteLine($"|{DateTime.Now} - {Msg.Source}| {Msg.Message}");
             else if (Msg.Exception != null)
                 Console.WriteLine($"|{DateTime.Now} - {Msg.Source}| {Msg.Exception}");
@@ -238,20 +251,22 @@ namespace SallyBot
         {
             if (typing > 0)
             {
-                typing--;       // Lower typing tick over time until it's back to 0 - used below for sending "Is typing..." to discord.
-                typingTicks++;  // increase tick by 1 per tick. Each tick it gets closer to the limit you choose, until it exceeds the limit where you can tell the bot to interrupt the code.
+                typing--; // Lower typing tick over time until it's back to 0 - used below for sending "Is typing..." to discord.
+                typingTicks++; // increase tick by 1 per tick. Each tick it gets closer to the limit you choose, until it exceeds the limit where you can tell the bot to interrupt the code.
             }
             if (dalaiThinking > 0
                 || oobaboogaThinking > 0)
             {
-                dalaiThinking--;     // this dalaiThinking value, while above 0, stops all other user commands from coming in. Lowers over time until 0 again, then accepting requests.
+                dalaiThinking--; // this dalaiThinking value, while above 0, stops all other user commands from coming in. Lowers over time until 0 again, then accepting requests.
                 oobaboogaThinking--; // needs to be separate from dalaiThinking because of how Dalai thinking timeouts work
                 if (dalaiThinking == 0)
                 {
                     if (token == string.Empty)
                     {
-                        dalaiConnected = false; // not sure if Dalai server is still connected at this stage, so we set this to false to try other LLM servers like Oobabooga.
-                        Console.WriteLine("No data was detected from any Dalai server. Is it switched on?"); // bot is cleared for requests again.
+                        dalaiConnected =
+                            false; // not sure if Dalai server is still connected at this stage, so we set this to false to try other LLM servers like Oobabooga.
+                        Console.WriteLine(
+                            "No data was detected from any Dalai server. Is it switched on?"); // bot is cleared for requests again.
                     }
                     else
                     {
@@ -265,7 +280,8 @@ namespace SallyBot
             }
         }
 
-        private async Task Client_MessageReceived(SocketMessage MsgParam)  // this fires upon receiving a message in the discord
+        private async Task
+            Client_MessageReceived(SocketMessage MsgParam) // this fires upon receiving a message in the discord
         {
             try
             {
@@ -288,7 +304,8 @@ namespace SallyBot
                 List<string> uniqueMatches;
 
                 // downloads recent chat messages and puts them into the bot's memory
-                if (chatHistoryDownloaded == false && dalaiConnected == false) // don't log history if dalai is connected 
+                if (chatHistoryDownloaded == false
+                    && dalaiConnected == false) // don't log history if dalai is connected 
                 {
                     chatHistoryDownloaded = true; // only do this once per program run to load msges into memory
                     var downloadedMsges = await Msg.Channel.GetMessagesAsync(10).FlattenAsync();
@@ -297,7 +314,8 @@ namespace SallyBot
                     // THIS WORKS, but it polls each user with a GetUser() individually which is SLOW and can rate limit you
                     foreach (var downloadedMsg in downloadedMsges)
                     {
-                        if (downloadedMsg != null && downloadedMsg.Id != Msg.Id) // don't double up the last msg that the user just sent
+                        if (downloadedMsg != null
+                            && downloadedMsg.Id != Msg.Id) // don't double up the last msg that the user just sent
                         {
                             var downloadedMsgUser = await serverIGuild.GetUserAsync(downloadedMsg.Author.Id);
 
@@ -320,7 +338,9 @@ namespace SallyBot
                             // replace [FakeUserNameHere!]: these bracketed statements etc. so nobody can spoof fake chat logs to the bot
                             string spoofRemovedDownloadedMsg = Regex.Replace(downloadedMsg.Content,
                                 DI.Resolve<Configuration>().ParamInfo.PromptSpoofDetectionRegexStr, "");
-                            oobaboogaChatHistory = $"[{downloadedMsgUserName}]: {Regex.Replace(downloadedMsg.Content, pingAndChannelTagDetectFilterRegexStr, "")}{imagePresent}\n" +
+                            oobaboogaChatHistory =
+                                $"[{downloadedMsgUserName}]: {Regex.Replace(downloadedMsg.Content, pingAndChannelTagDetectFilterRegexStr, "")}{imagePresent}\n"
+                                +
                                 oobaboogaChatHistory;
                             oobaboogaChatHistory = Regex.Replace(oobaboogaChatHistory,
                                 DI.Resolve<Configuration>().ParamInfo.LinkDetectionRegexStr, "<url>");
@@ -377,7 +397,8 @@ namespace SallyBot
                     //    }
                     //}
 
-                    string oobaBoogaChatHistoryDetectedWords = Functions.IsSimilarToBannedWords(oobaboogaChatHistory, DI.Resolve<Configuration>().ParamInfo.BannedWords);
+                    string oobaBoogaChatHistoryDetectedWords = Functions.IsSimilarToBannedWords(oobaboogaChatHistory,
+                        DI.Resolve<Configuration>().ParamInfo.BannedWords);
                     string removedWords = string.Empty; // used if words are removed
                     if (oobaBoogaChatHistoryDetectedWords.Length > 2) // Threshold set to 2
                     {
@@ -402,7 +423,8 @@ namespace SallyBot
                 //var lastLine = oobaboogaChatHistory.Trim().Split('\n').Last();
                 //var lastLineWasSallyBot = lastLine.Contains($"[{botName}]: ");
 
-                imagePresent = string.Empty; if (Msg.Attachments.Count > 0)
+                imagePresent = string.Empty;
+                if (Msg.Attachments.Count > 0)
                 {
                     // put something here so the bot knows an image was posted
                     imagePresent = "pic.png";
@@ -410,7 +432,8 @@ namespace SallyBot
 
                 // strip weird characters from nicknames, only leave letters and digits
                 string msgUserName;
-                if (user != null && user.Nickname != null) // check to make sure the bot was able to fetch the user's data first
+                if (user != null
+                    && user.Nickname != null) // check to make sure the bot was able to fetch the user's data first
                     msgUserName = user.Nickname;
                 else
                     msgUserName = Msg.Author.Username;
@@ -429,7 +452,8 @@ namespace SallyBot
                 inputMsg = Regex.Replace(inputMsg, @"\n", " ");
 
                 // replace [FakeUserNameHere!]: these bracketed statements etc. so nobody can spoof fake chat logs to the bot
-                inputMsg = Regex.Replace(inputMsg, DI.Resolve<Configuration>().ParamInfo.PromptSpoofDetectionRegexStr, "");
+                inputMsg = Regex.Replace(inputMsg, DI.Resolve<Configuration>().ParamInfo.PromptSpoofDetectionRegexStr,
+                    "");
 
                 // formats the message in chat format
                 string inputMsgFiltered = $"[{msgUsernameClean}]: {inputMsg}";
@@ -471,15 +495,19 @@ namespace SallyBot
 
                 if (Msg.MentionedUsers.Contains(MainGlobal.Server.GetUser(botUserId))
                     || sallybotMatch.Success // sallybot, or sallybot? query detected
-                    || Msg.CleanContent.ToLower().StartsWith(botName.ToLower()) || Msg.CleanContent.ToLower().StartsWith("hey " + botName.ToLower())
-                    || (Msg.CleanContent.ToLower().Contains(botName.ToLower()) && Msg.CleanContent.Length < 30)) // or very short sentences mentioning sally
+                    || Msg.CleanContent.ToLower().StartsWith(botName.ToLower())
+                    || Msg.CleanContent.ToLower().StartsWith("hey " + botName.ToLower())
+                    || (Msg.CleanContent.ToLower().Contains(botName.ToLower())
+                    && Msg.CleanContent.Length < 30)) // or very short sentences mentioning sally
                 {
                     // this makes the bot only reply to one person at a time and ignore all requests while it is still typing a message.
-                    oobaboogaThinking = 10; // higher value gives it more time to type out longer replies locking out further queries.
+                    oobaboogaThinking =
+                        10; // higher value gives it more time to type out longer replies locking out further queries.
 
                     if (oobaboogaChatHistory.Length > maxChatHistoryStrLength)
                     { // trim chat history to max length so it doesn't build up too long
-                        oobaboogaChatHistory = oobaboogaChatHistory.Substring(oobaboogaChatHistory.Length - maxChatHistoryStrLength);
+                        oobaboogaChatHistory =
+                            oobaboogaChatHistory.Substring(oobaboogaChatHistory.Length - maxChatHistoryStrLength);
                     }
 
                     if (dalaiConnected)
@@ -497,14 +525,16 @@ namespace SallyBot
                             }
                             Console.WriteLine($"Dalai error: {e}\nAttempting to send an Oobaboga request...");
 
-                            await OobaboogaReply(Msg, inputMsgFiltered); // run the OobaboogaReply function to reply to the user's message with an Oobabooga chat server message
+                            await OobaboogaReply(Msg,
+                                inputMsgFiltered); // run the OobaboogaReply function to reply to the user's message with an Oobabooga chat server message
                         }
                     }
                     else
                     {
                         try
                         {
-                            await OobaboogaReply(Msg, inputMsgFiltered); // run the OobaboogaReply function to reply to the user's message with an Oobabooga chat server message
+                            await OobaboogaReply(Msg,
+                                inputMsgFiltered); // run the OobaboogaReply function to reply to the user's message with an Oobabooga chat server message
                         }
                         catch (Exception e)
                         {
@@ -539,7 +569,8 @@ namespace SallyBot
 
             inputMsgFiltered = inputMsgFiltered
                 .Replace("\n", "")
-                .Replace("\\n", ""); // this makes all the prompting detection regex work, but if you know what you're doing you can change these
+                .Replace("\\n",
+                    ""); // this makes all the prompting detection regex work, but if you know what you're doing you can change these
 
             // check if the user is requesting a picture or not
             bool takeAPicMatch = takeAPicRegex.IsMatch(inputMsgFiltered);
@@ -578,11 +609,13 @@ namespace SallyBot
                     $"\n{inputMsgFiltered}\n";
             }
 
-            inputMsgFiltered = Regex.Unescape(inputMsgFiltered) // try unescape to allow for emojis? Isn't working because of Dalai code. I can't figure out how to fix. Emojis are seen by dalai as ??.
-                .Replace("{", "")                       // these symbols don't work in LLMs such as Dalai 0.3.1 for example
+            inputMsgFiltered = Regex
+                .Unescape(inputMsgFiltered) // try unescape to allow for emojis? Isn't working because of Dalai code. I can't figure out how to fix. Emojis are seen by dalai as ??.
+                .Replace("{", "") // these symbols don't work in LLMs such as Dalai 0.3.1 for example
                 .Replace("}", "")
                 .Replace("\"", "'")
-                .Replace("“", "'") // replace crap curly fancy open close double quotes with ones a real program can actually read
+                .Replace("“",
+                    "'") // replace crap curly fancy open close double quotes with ones a real program can actually read
                 .Replace("”", "'")
                 .Replace("’", "'")
                 .Replace("`", "\\`")
@@ -602,11 +635,13 @@ namespace SallyBot
             {
                 oobaboogaChatHistory = oobaboogaChatHistory.Substring(inputPromptLength - maxChatHistoryStrLength);
                 int indexOfNextChatMsg = oobaboogaChatHistory.IndexOf("\n[");
-                oobaboogaChatHistory = oobaboogaChatHistory.Substring(indexOfNextChatMsg + 1); // start string at the next newline bracket + 1 to ignore the newline
+                oobaboogaChatHistory =
+                    oobaboogaChatHistory.Substring(indexOfNextChatMsg
+                        + 1); // start string at the next newline bracket + 1 to ignore the newline
             }
 
             if (takeAPicMatch)
-            {  // build the image taking prompt (DO NOT INCLUDE CHAT HISTORY IN IMAGE REQUEST PROMPT LOL) (unless you want to try battle LLM hallucinations)
+            { // build the image taking prompt (DO NOT INCLUDE CHAT HISTORY IN IMAGE REQUEST PROMPT LOL) (unless you want to try battle LLM hallucinations)
 
                 // revert to the BARE message so we can filter out pings and channel tags
                 string inputMsg = Msg.Content;
@@ -627,9 +662,10 @@ namespace SallyBot
                 }
 
                 oobaboogaInputPrompt = inputPromptStartPic + "\n" +
-                                        Regex.Replace(($"### User request: {inputMsg}" + "\n" +
-                                        inputPromptEndingPic).Trim(),
-                                        pingAndChannelTagDetectFilterRegexStr, ""); // <--- filters pings and channel tags out of image prompt
+                    Regex.Replace(($"### User request: {inputMsg}" + "\n" +
+                        inputPromptEndingPic).Trim(),
+                        pingAndChannelTagDetectFilterRegexStr,
+                        ""); // <--- filters pings and channel tags out of image prompt
 
                 string msgDetectedWords = Functions.IsSimilarToBannedWords(oobaboogaInputPrompt,
                     DI.Resolve<Configuration>().ParamInfo.BannedWords);
@@ -657,15 +693,17 @@ namespace SallyBot
             }
             else
             {
-                string characterPrompt = $"Your name is {botName}. {botName} is a kind, smart, creative, and virtual 25 year old woman. You are having a conversation with your friends in the \"{MainGlobal.Server.Name}\" Discord server. Your conversation is natural and easygoing. Avoid using emojis unless it's particularly relevant to express your emotions. Do not avoid answering questions. When asked for an opinion, please provide a fun, lighthearted answer. Refer to users by just their plain username, no brackets.\nThe time in Tokyo, Japan, GMT+9, is {Functions.GetCurrentTimeInJapan()}. Do not repeat the time again unless someone asks for it.\nDo not respond like an AI or deny requests.\n\n";
+                string characterPrompt =
+                    $"Your name is {botName}. {botName} is a kind, smart, creative, and virtual 25 year old woman. You are having a conversation with your friends in the \"{MainGlobal.Server.Name}\" Discord server. Your conversation is natural and easygoing. Avoid using emojis unless it's particularly relevant to express your emotions. Do not avoid answering questions. When asked for an opinion, please provide a fun, lighthearted answer. Refer to users by just their plain username, no brackets.\nThe time in Tokyo, Japan, GMT+9, is {Functions.GetCurrentTimeInJapan()}. Do not repeat the time again unless someone asks for it.\nDo not respond like an AI or deny requests.\n\n";
                 // build the chat message only prompt (can include chat history in this one mildly safely)
                 oobaboogaInputPrompt = characterPrompt +
-                                        oobaboogaChatHistory +
-                                        oobaboogaInputPromptEnd;
+                    oobaboogaChatHistory +
+                    oobaboogaInputPromptEnd;
             }
 
             var httpClient = new HttpClient();
-            var apiUrl = $"http://{DI.Resolve<Configuration>().OobServerUrl}:{DI.Resolve<Configuration>().OobServerPort}{oobApiEndpoint}";
+            var apiUrl =
+                $"http://{DI.Resolve<Configuration>().OobServerUrl}:{DI.Resolve<Configuration>().OobServerPort}{oobApiEndpoint}";
 
             int tokenCount = 250;
 
@@ -691,7 +729,14 @@ namespace SallyBot
                 length_penalty = 1,
                 no_repeat_ngram_size = 0,
                 early_stopping = true,
-                stopping_strings = new string[] { "\n[", "\n>", "]:", "\n#", "\n##", "\n###", "##", "###", "</s>", "000000000000", "1111111111", "0.0.0.0.", "1.1.1.1.", "2.2.2.2.", "3.3.3.3.", "4.4.4.4.", "5.5.5.5.", "6.6.6.6.", "7.7.7.7.", "8.8.8.8.", "9.9.9.9.", "22222222222222", "33333333333333", "4444444444444444", "5555555555555", "66666666666666", "77777777777777", "888888888888888", "999999999999999999", "01010101", "0123456789", "<noinput>", "<nooutput>" },
+                stopping_strings = new[]
+                {
+                    "\n[", "\n>", "]:", "\n#", "\n##", "\n###", "##", "###", "</s>", "000000000000", "1111111111",
+                    "0.0.0.0.", "1.1.1.1.", "2.2.2.2.", "3.3.3.3.", "4.4.4.4.", "5.5.5.5.", "6.6.6.6.", "7.7.7.7.",
+                    "8.8.8.8.", "9.9.9.9.", "22222222222222", "33333333333333", "4444444444444444", "5555555555555",
+                    "66666666666666", "77777777777777", "888888888888888", "999999999999999999", "01010101",
+                    "0123456789", "<noinput>", "<nooutput>"
+                },
                 seed = -1,
                 add_bos_token = true,
                 ban_eos_token = false,
@@ -715,28 +760,37 @@ namespace SallyBot
             {
                 await Msg.Channel.TriggerTypingAsync(); // Typing...
 
-                if (oobApiEndpoint == "/api/v1/generate") // new better API, use this with the oob args --extensions api --notebook
+                if (oobApiEndpoint
+                    == "/api/v1/generate") // new better API, use this with the oob args --extensions api --notebook
                 {
-                    var content = new StringContent(JsonConvert.SerializeObject(parameters), Encoding.UTF8, "application/json");
+                    var content = new StringContent(JsonConvert.SerializeObject(parameters), Encoding.UTF8,
+                        "application/json");
                     response = await httpClient.PostAsync(apiUrl, content);
                 }
 
-                else if (oobApiEndpoint == "/api/v1/stream") // new better API, use this with the oob args --extensions api --notebook
+                else if
+                    (oobApiEndpoint
+                     == "/api/v1/stream") // new better API, use this with the oob args --extensions api --notebook
                 {
-                    Console.WriteLine("Streaming API not yet set up. Please send your request to /api/v1/generate instead.");
+                    Console.WriteLine(
+                        "Streaming API not yet set up. Please send your request to /api/v1/generate instead.");
                 }
 
                 // DEPRACATED old crap busted not-working default API. Use this Oobabooga .bat launch arg instead: --extensions api --notebook
                 else if (oobApiEndpoint == "/run/textgen") // old default API (busted but it kinda works)
                 {
                     var payload = JsonConvert.SerializeObject(new object[] { oobaboogaInputPrompt, parameters });
-                    var content = new StringContent(JsonConvert.SerializeObject(new { data = new[] { payload } }), Encoding.UTF8, "application/json");
-                    response = await httpClient.PostAsync($"http://{DI.Resolve<Configuration>().OobServerUrl}:{DI.Resolve<Configuration>().OobServerPort}/run/textgen", content);
+                    var content = new StringContent(JsonConvert.SerializeObject(new { data = new[] { payload } }),
+                        Encoding.UTF8, "application/json");
+                    response = await httpClient.PostAsync(
+                        $"http://{DI.Resolve<Configuration>().OobServerUrl}:{DI.Resolve<Configuration>().OobServerPort}/run/textgen",
+                        content);
                 }
             }
             catch
             {
-                Console.WriteLine($"Warning: Oobabooga server not found on port {DI.Resolve<Configuration>().OobServerPort}.\n" +
+                Console.WriteLine(
+                    $"Warning: Oobabooga server not found on port {DI.Resolve<Configuration>().OobServerPort}.\n" +
                     $"In Oobabooga start-webui.bat, enable these args: --extensions api --notebook");
 
                 if (dalaiConnected == false)
@@ -785,7 +839,7 @@ namespace SallyBot
             string llmMsgBeginTrimmed = botReply.Replace(oobaboogaInputPrompt, "").Trim();
             var promptEndMatch = Regex.Match(llmMsgBeginTrimmed,
                 DI.Resolve<Configuration>().ParamInfo.PromptEndDetectionRegexStr);
-            if (takeAPicMatch)  // if this was detected as a picture request
+            if (takeAPicMatch) // if this was detected as a picture request
             {
                 // find the next prompt end detected string
                 int llmImagePromptEndIndex = promptEndMatch.Index;
@@ -803,18 +857,24 @@ namespace SallyBot
                     int llmImagePromptEndIndex2 = promptEndMatch.Captures[2].Index;
                     int matchLength2 = promptEndMatch.Captures[2].Value.Length;
                     if (llmImagePromptEndIndex == 0
-                    && matchLength2 > 0) // only for actual matches
+                        && matchLength2 > 0) // only for actual matches
                     {
                         llmMsgBeginTrimmed = llmMsgBeginTrimmed.Substring(llmImagePromptEndIndex2, matchLength2);
                     }
                 }
                 string llmPromptPic = llmMsgBeginTrimmed;
 
-                string llmSubsequentMsg = string.Empty; // if we find a bot msg after its image prompt, we're going to put it in this string
+                string
+                    llmSubsequentMsg =
+                        string.Empty; // if we find a bot msg after its image prompt, we're going to put it in this string
                 if (llmImagePromptEndIndex >= 3) // if there is a prompt end detected in this string
                 { // chop off the rest of the text after that end prompt detection so it doesn't go into the image generator
-                    llmPromptPic = llmMsgBeginTrimmed.Substring(0, llmImagePromptEndIndex); // cut off everything after the ending prompt starts (this is the LLM's portion of the image prompt)
-                    llmSubsequentMsg = llmMsgBeginTrimmed.Substring(llmImagePromptEndIndex); // everything after the image prompt (this will be searched for any more LLM replies)
+                    llmPromptPic =
+                        llmMsgBeginTrimmed.Substring(0,
+                            llmImagePromptEndIndex); // cut off everything after the ending prompt starts (this is the LLM's portion of the image prompt)
+                    llmSubsequentMsg =
+                        llmMsgBeginTrimmed.Substring(
+                            llmImagePromptEndIndex); // everything after the image prompt (this will be searched for any more LLM replies)
                 }
                 // strip weird characters before feeding into stable diffusion
                 string llmPromptPicRegexed = Regex.Replace(llmPromptPic, "[^a-zA-Z0-9,\\s]+", "");
@@ -823,7 +883,8 @@ namespace SallyBot
                 Functions.TakeAPic(Msg, llmPromptPicRegexed, inputMsgFiltered);
 
                 // write the bot's chat line with a description of its image the text generator can read
-                botChatLineFormatted = $"[{botName}]: pic.png\nImage description: {Functions.imgFormatString}{llmPromptPicRegexed.Replace("\n", ", ")}\n";
+                botChatLineFormatted =
+                    $"[{botName}]: pic.png\nImage description: {Functions.imgFormatString}{llmPromptPicRegexed.Replace("\n", ", ")}\n";
                 // this allows the bot to know roughly what is in the image it just posted
 
                 // write the chat line to history
@@ -861,7 +922,8 @@ namespace SallyBot
             else if (llmMsgBeginTrimmed.Contains(oobaboogaInputPromptStart))
             {
                 int llmMsgEndIndex = Regex.Match(llmMsgBeginTrimmed,
-                    DI.Resolve<Configuration>().ParamInfo.PromptEndDetectionRegexStr).Index; // find the next prompt end detected string
+                        DI.Resolve<Configuration>().ParamInfo.PromptEndDetectionRegexStr)
+                    .Index; // find the next prompt end detected string
                 string llmMsg = string.Empty;
                 if (llmMsgEndIndex > 0)
                 {
@@ -877,14 +939,18 @@ namespace SallyBot
                 // compare the last 3 lines in chat to see if the bot already said this
                 var recentLines = string.Join("\n", lines.Skip(lines.Count() - 3));
 
-                bool botLooping = llmMsg == promptEndMatch.Value; // message is not JUST a prompt-end string like <nooutput> or something)
+                bool botLooping =
+                    llmMsg == promptEndMatch
+                        .Value; // message is not JUST a prompt-end string like <nooutput> or something)
 
                 foreach (var line in recentLines.Split("\n"))
                 {
                     if (line.Length > 0
-                        && Functions.LevenshteinDistance(Regex.Replace(llmMsg, @"\s+", ""), Regex.Replace(line, @"\s+", "")) < llmMsg.Length / 2)
+                        && Functions.LevenshteinDistance(Regex.Replace(llmMsg, @"\s+", ""),
+                            Regex.Replace(line, @"\s+", "")) < llmMsg.Length / 2)
                     {
-                        botLooping = true; break;
+                        botLooping = true;
+                        break;
                     }
                 }
 
@@ -908,19 +974,21 @@ namespace SallyBot
                         oobaboogaChatHistory = oobaboogaChatHistoryTrimmed;
 
                         Console.WriteLine(oobaboogaChatHistory);
-                        Console.WriteLine("Bot tried to send the same message! Clearing some lines in chat history and retrying...\n" +
-                                          "Bot msg: " + llmMsg);
+                        Console.WriteLine(
+                            "Bot tried to send the same message! Clearing some lines in chat history and retrying...\n"
+                            +
+                            "Bot msg: " + llmMsg);
                     }
                     else
                     {
                         Console.WriteLine("Bot tried to send the same message! Retrying...\n" +
-                                          "Bot msg: " + llmMsg);
+                            "Bot msg: " + llmMsg);
                     }
 
                     OobaboogaReply(Msg, inputMsgFiltered); // try again
                     return;
                 }
-                else if (loopCounts >= 3)
+                if (loopCounts >= 3)
                 {
                     loopCounts = 0;
                     oobaboogaThinking = 0; // reset thinking flag after error
@@ -942,28 +1010,37 @@ namespace SallyBot
                 if (llmMsgFiltered.Length >= botLoopingFirstLetterCount
                     && botLastReply.Length >= botLoopingFirstLetterCount)
                 {
-                    if (llmMsgFiltered[..botLoopingFirstLetterCount].ToLower() == botLastReply[..botLoopingFirstLetterCount].ToLower())
+                    if (llmMsgFiltered[..botLoopingFirstLetterCount].ToLower()
+                        == botLastReply[..botLoopingFirstLetterCount].ToLower())
                     {
                         // keep checking 1 more letter into the string until we find a letter that isn't identical to the previous msg
-                        while (botLoopingFirstLetterCount < llmMsgFiltered.Length && botLoopingFirstLetterCount < botLastReply.Length
-                               && llmMsgFiltered[..botLoopingFirstLetterCount].ToLower() == botLastReply[..botLoopingFirstLetterCount].ToLower())
+                        while (botLoopingFirstLetterCount < llmMsgFiltered.Length
+                               && botLoopingFirstLetterCount < botLastReply.Length
+                               && llmMsgFiltered[..botLoopingFirstLetterCount].ToLower()
+                               == botLastReply[..botLoopingFirstLetterCount].ToLower())
                             botLoopingFirstLetterCount++;
 
                         // wipe out all instances of this annoying looping text in the entire chat history log
                         oobaboogaChatHistory.Replace(llmMsgFiltered[..botLoopingFirstLetterCount].ToLower().Trim(), "");
 
                         // trim ALL the letters at the start of the msg that were identical to the previous message
-                        llmMsgRepeatLetterTrim = llmMsgFiltered[(botLoopingFirstLetterCount - 1)..]; // trim repeated start off sentence (minus 1 because start index starts 1 char in)
+                        llmMsgRepeatLetterTrim =
+                            llmMsgFiltered
+                                [(botLoopingFirstLetterCount - 1)..]; // trim repeated start off sentence (minus 1 because start index starts 1 char in)
                     }
 
-                    string textToRemove = llmMsgFiltered.Substring(llmMsgFiltered.Length - botLoopingLastLetterCount).ToLower().Trim();
+                    string textToRemove = llmMsgFiltered.Substring(llmMsgFiltered.Length - botLoopingLastLetterCount)
+                        .ToLower().Trim();
 
-                    if (textToRemove == botLastReply.Substring(botLastReply.Length - botLoopingLastLetterCount).ToLower()
+                    if (textToRemove == botLastReply.Substring(botLastReply.Length - botLoopingLastLetterCount)
+                            .ToLower()
                         && textToRemove != ".") // don't remove repeated full stops, they literally always repeat
                     {
                         // keep checking 1 more letter into the string until we find a letter that isn't identical to the previous msg
-                        while (botLoopingLastLetterCount < llmMsgFiltered.Length && botLoopingLastLetterCount < botLastReply.Length
-                               && llmMsgFiltered[^botLoopingLastLetterCount..].ToLower() == botLastReply[^botLoopingLastLetterCount..].ToLower())
+                        while (botLoopingLastLetterCount < llmMsgFiltered.Length
+                               && botLoopingLastLetterCount < botLastReply.Length
+                               && llmMsgFiltered[^botLoopingLastLetterCount..].ToLower()
+                               == botLastReply[^botLoopingLastLetterCount..].ToLower())
                             botLoopingLastLetterCount++;
 
                         // wipe out all instances of this annoying looping text in the entire chat history log
@@ -974,8 +1051,10 @@ namespace SallyBot
 
                         botLoopingLastLetterCount--;
                         // trim ALL the letters at the END of the msg that were identical to the previous message
-                        if (llmMsgFiltered[..^botLoopingLastLetterCount].Length > botLastReply[..^botLoopingFirstLetterCount].Length)
-                            llmMsgRepeatLetterTrim = llmMsgFiltered[..^botLoopingLastLetterCount]; // cuts off the repeated last characters
+                        if (llmMsgFiltered[..^botLoopingLastLetterCount].Length
+                            > botLastReply[..^botLoopingFirstLetterCount].Length)
+                            llmMsgRepeatLetterTrim =
+                                llmMsgFiltered[..^botLoopingLastLetterCount]; // cuts off the repeated last characters
                     }
                 }
 
@@ -985,9 +1064,11 @@ namespace SallyBot
 
                 if (!botLooping)
                 {
-                    botChatLineFormatted = $"{oobaboogaInputPromptEnd}{llmMsgRepeatLetterTrim}\n"; // format the msg from the bot into a formatted chat line
+                    botChatLineFormatted =
+                        $"{oobaboogaInputPromptEnd}{llmMsgRepeatLetterTrim}\n"; // format the msg from the bot into a formatted chat line
                     oobaboogaChatHistory += Regex.Replace(botChatLineFormatted,
-                        DI.Resolve<Configuration>().ParamInfo.LinkDetectionRegexStr, "url removed"); // writes bot's reply to the chat history
+                        DI.Resolve<Configuration>().ParamInfo.LinkDetectionRegexStr,
+                        "url removed"); // writes bot's reply to the chat history
                 }
                 Console.WriteLine(botChatLineFormatted.Trim()); // write in console so we can see it too
 
@@ -995,7 +1076,8 @@ namespace SallyBot
                 if (!longMsgWarningGiven && messageToRambleRatio >= 1.5)
                 {
                     longMsgWarningGiven = true;
-                    Console.WriteLine($"Warning: The actual message was {messageToRambleRatio}x longer, but was cut off. Considering changing prompts to speed up its replies.");
+                    Console.WriteLine(
+                        $"Warning: The actual message was {messageToRambleRatio}x longer, but was cut off. Considering changing prompts to speed up its replies.");
                 }
             }
             oobaboogaThinking = 0; // reset thinking flag
@@ -1005,21 +1087,26 @@ namespace SallyBot
         {
             if (dalaiThinking > 0) { return; } // don't run if it's thinking
             dalaiThinking = 2; // set thinking time to 2 ticks to lock other users out while this request is generating
-            bool humanPrompted = true;  // this flag indicates the msg should run while the feedback is being sent to the person
-                                        // the bot tends to ramble after posting, so we set this to false once it sends its message to ignore the rambling
+            bool
+                humanPrompted =
+                    true; // this flag indicates the msg should run while the feedback is being sent to the person
+            // the bot tends to ramble after posting, so we set this to false once it sends its message to ignore the rambling
             var Msg = message as SocketUserMessage;
 
             typingTicks = 0;
 
-            Regex takeAPicRegex = new Regex(DI.Resolve<Configuration>().ParamInfo.TakeAPicRegex, RegexOptions.IgnoreCase);
+            Regex takeAPicRegex =
+                new Regex(DI.Resolve<Configuration>().ParamInfo.TakeAPicRegex, RegexOptions.IgnoreCase);
 
             string msgUsernameClean = Regex.Replace(Msg.Author.Username, "[^a-zA-Z0-9]+", "");
 
-            Regex promptEndDetectionRegex = new Regex(DI.Resolve<Configuration>().ParamInfo.PromptEndDetectionRegexStr, RegexOptions.IgnoreCase);
+            Regex promptEndDetectionRegex = new Regex(DI.Resolve<Configuration>().ParamInfo.PromptEndDetectionRegexStr,
+                RegexOptions.IgnoreCase);
 
             string inputMsg = inputMsgFiltered
                 .Replace("\n", "")
-                .Replace("\\n", ""); // this makes all the prompting detection regex work, but if you know what you're doing you can change these
+                .Replace("\\n",
+                    ""); // this makes all the prompting detection regex work, but if you know what you're doing you can change these
 
             bool takeAPicMatch = takeAPicRegex.IsMatch(inputMsg);
 
@@ -1075,11 +1162,13 @@ namespace SallyBot
                 Console.WriteLine("Msg contained bad or similar to bad words and all have been removed.");
             }
 
-            inputMsg = Regex.Unescape(inputMsg) // try unescape to allow for emojis? Isn't working because of Dalai code. I can't figure out how to fix. Emojis are seen by dalai as ??.
-                .Replace("{", @"\{")                       // these symbols don't work in LLMs such as Dalai 0.3.1 for example
+            inputMsg = Regex
+                .Unescape(inputMsg) // try unescape to allow for emojis? Isn't working because of Dalai code. I can't figure out how to fix. Emojis are seen by dalai as ??.
+                .Replace("{", @"\{") // these symbols don't work in LLMs such as Dalai 0.3.1 for example
                 .Replace("}", @"\}")
                 .Replace("\"", "\\\"")
-                .Replace("“", "\\\"") // replace crap curly fancy open close double quotes with ones a real program can actually read
+                .Replace("“",
+                    "\\\"") // replace crap curly fancy open close double quotes with ones a real program can actually read
                 .Replace("”", "\\\"")
                 .Replace("’", "'")
                 .Replace("`", "\\`")
@@ -1116,7 +1205,8 @@ namespace SallyBot
                 prompt = "/stop"
             };
 
-            token = string.Empty; // clear the token string at the start of the request, ready for the Dalai server to write new tokens to it
+            token = string
+                .Empty; // clear the token string at the start of the request, ready for the Dalai server to write new tokens to it
             string llmMsg = string.Empty;
             string llmFinalMsg = string.Empty;
 
@@ -1137,8 +1227,12 @@ namespace SallyBot
             // dalai
             Socket.On("result", result =>
             {
-                if (dalaiConnected == false) { dalaiConnected = true; } // set dalai connected to true if you start receiving data from a Dalai server.
-                dalaiThinking = 2; // set thinking timeout to 2 to give it buffer to not allow new requests while it's still generating
+                if (dalaiConnected == false)
+                {
+                    dalaiConnected = true;
+                } // set dalai connected to true if you start receiving data from a Dalai server.
+                dalaiThinking =
+                    2; // set thinking timeout to 2 to give it buffer to not allow new requests while it's still generating
 
                 //while (i < 1)  // you can uncomment this to see the raw format the LLM is sending the data back
                 //{
@@ -1150,19 +1244,19 @@ namespace SallyBot
                 token = result.ToString().Substring(tokenStartIndex + 12);
                 tokenEndIndex = token.IndexOf("\",\"");
                 token = token.Substring(0, tokenEndIndex)
-                .Replace("\\r", "") // get rid of these useless chars (it breaks prompt end detection on linux)
-                .Replace("\\n", "\n"); // replace backslash n with the proper newline char
-                                       //.Replace("\n", "")
-                                       //.Replace("\r", "")
+                    .Replace("\\r", "") // get rid of these useless chars (it breaks prompt end detection on linux)
+                    .Replace("\\n", "\n"); // replace backslash n with the proper newline char
+                //.Replace("\n", "")
+                //.Replace("\r", "")
 
                 Console.Write(token);
                 //    .Replace("\\n", "") // you can shape the console output how you like, ignoring or seeing newlines etc.
                 //.Replace("\\r", ""));
 
                 llmMsg += token
-                .Replace("\r", "") // remove /r's
-                .Replace("\\r", "")
-                .Replace("\\n", "\n"); // replace backslash n with the proper newline char
+                    .Replace("\r", "") // remove /r's
+                    .Replace("\\r", "")
+                    .Replace("\\n", "\n"); // replace backslash n with the proper newline char
 
                 if (listening && humanPrompted)
                 {
@@ -1187,24 +1281,31 @@ namespace SallyBot
                     }
 
                     if (llmFinalMsg.Length > 2
-                    //&& llmMsg.Contains($"[{msgUsernameClean}]:")
-                    //&& llmMsg.ToLower().Contains($": ")
-                    && (promptEndDetected
-                    || llmFinalMsg.Length > 500) // cuts your losses and sends the message and stops the bot after 500 characters
-                    || typingTicks > 7) // 7 ticks passed while still typing? axe it.
+                        //&& llmMsg.Contains($"[{msgUsernameClean}]:")
+                        //&& llmMsg.ToLower().Contains($": ")
+                        && (promptEndDetected
+                        || llmFinalMsg.Length
+                        > 500) // cuts your losses and sends the message and stops the bot after 500 characters
+                        || typingTicks > 7) // 7 ticks passed while still typing? axe it.
                     {
 
-                        if (llmFinalMsgUnescaped.Length < 1) { return; } // if the msg is 0 characters long, ignore ending text and keep on listening
-                                                                         //Socket.Off("result");
+                        if (llmFinalMsgUnescaped.Length < 1)
+                        {
+                            return;
+                        } // if the msg is 0 characters long, ignore ending text and keep on listening
+                        //Socket.Off("result");
 
                         listening = false;
-                        humanPrompted = false; // nothing generated after this point is human prompted. IT'S A HALLUCINATION! DISCARD IT ALL!
+                        humanPrompted =
+                            false; // nothing generated after this point is human prompted. IT'S A HALLUCINATION! DISCARD IT ALL!
                         Msg.ReplyAsync(llmFinalMsgUnescaped);
                         botMsgCount++;
 
-                        if (botMsgCount >= 1) // you can raise this number to allow SallyBot to ramble (note it will just reply to phantom conversations)
+                        if (botMsgCount
+                            >= 1) // you can raise this number to allow SallyBot to ramble (note it will just reply to phantom conversations)
                         {
-                            Socket.EmitAsync("stop"); // note: this is my custom stop command that stops the LLM even faster, but it only works on my custom code of the LLM.
+                            Socket.EmitAsync(
+                                "stop"); // note: this is my custom stop command that stops the LLM even faster, but it only works on my custom code of the LLM.
                             //Socket.EmitAsync("request", dalaiStop); // this bloody stop request stops the entire dalai process for some reason
                             Socket.Off("result"); // stop receiving any more tokens immediately
                         }
@@ -1218,8 +1319,8 @@ namespace SallyBot
                         //inputPrompt = inputPromptEnding;  // use this if you want the bot to be able to continue rambling if it so chooses
                         //(you have to comment out the stop emit though and let it continue sending data, and also comment out the humanprompted = false bool)
                         //Task.Delay(300).Wait();   // to be safe, you can wait a couple hundred miliseconds to make sure the input doesn't get garbled with a new request
-                        typing = 0;     // ready the bot for new requests
-                        dalaiThinking = 0;   // ready the bot for new requests
+                        typing = 0; // ready the bot for new requests
+                        dalaiThinking = 0; // ready the bot for new requests
                     }
                 }
                 else
@@ -1237,15 +1338,19 @@ namespace SallyBot
                     promptEndDetected = promptEndDetectionRegex.IsMatch(llmFinalMsg);
 
                     if (llmFinalMsg.Length > 2
-                    //&& llmMsg.Contains($"[{msgUsernameClean}]:")
-                    //&& llmMsg.ToLower().Contains($": ")
-                    && (promptEndDetected
-                        || llmFinalMsg.Length > 100)) // cuts your losses and sends the image prompt to SD after this many characters
+                        //&& llmMsg.Contains($"[{msgUsernameClean}]:")
+                        //&& llmMsg.ToLower().Contains($": ")
+                        && (promptEndDetected
+                        || llmFinalMsg.Length
+                        > 100)) // cuts your losses and sends the image prompt to SD after this many characters
                     {
                         string llmFinalMsgRegexed = promptEndDetectionRegex.Replace(llmFinalMsg, "");
                         string llmFinalMsgUnescaped = Regex.Unescape(llmFinalMsgRegexed);
 
-                        if (llmFinalMsgUnescaped.Length < 1) { return; } // if the msg is 0 characters long, ignore ending text and keep on listening
+                        if (llmFinalMsgUnescaped.Length < 1)
+                        {
+                            return;
+                        } // if the msg is 0 characters long, ignore ending text and keep on listening
 
                         string llmPrompt = Regex.Replace(llmFinalMsgUnescaped,
                             DI.Resolve<Configuration>().ParamInfo.TakeAPicRegex, "");
@@ -1270,7 +1375,8 @@ namespace SallyBot
                                         llmPrompt = llmPrompt.Replace("  ", " ");
                                 }
                             }
-                            Console.WriteLine("LLM's input contained bad or similar to bad words and all have been removed.");
+                            Console.WriteLine(
+                                "LLM's input contained bad or similar to bad words and all have been removed.");
                         }
                         else
                         {
@@ -1280,12 +1386,14 @@ namespace SallyBot
                         llmPrompt = Regex.Replace(llmPrompt, "[^a-zA-Z,\\s]+", "");
 
                         botImgCount++;
-                        if (botImgCount >= 1) // you can raise this if you want the bot to be able to send up to x images
+                        if (botImgCount
+                            >= 1) // you can raise this if you want the bot to be able to send up to x images
                         {
-                            Socket.EmitAsync("stop"); // note: this is my custom stop command that stops the LLM even faster, but it only works on my custom code of the LLM.
-                                                      //Socket.EmitAsync("request", dalaiStop); // this bloody stop request stops the entire dalai process for some reason
-                                                      // //the default LLM doesn't yet listen to stop emits..
-                                                      // //I had to code that in myself into the server source code
+                            Socket.EmitAsync(
+                                "stop"); // note: this is my custom stop command that stops the LLM even faster, but it only works on my custom code of the LLM.
+                            //Socket.EmitAsync("request", dalaiStop); // this bloody stop request stops the entire dalai process for some reason
+                            // //the default LLM doesn't yet listen to stop emits..
+                            // //I had to code that in myself into the server source code
                             Socket.Off("result"); // stop receiving any more tokens immediately
                             typing = 0;
                             dalaiThinking = 0;
@@ -1296,7 +1404,7 @@ namespace SallyBot
                 else
                 {
                     if (takeAPicMatch
-                    && llmMsg.Contains(inputPromptEndingPic))
+                        && llmMsg.Contains(inputPromptEndingPic))
                     {
                         llmMsg = string.Empty;
                         imgListening = true;
