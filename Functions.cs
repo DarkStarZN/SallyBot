@@ -14,15 +14,17 @@ using System.Text.RegularExpressions;
 using Newtonsoft.Json.Linq;
 
 using RestSharp;
+using sallybot;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Png;
+using Configuration = sallybot.Configuration;
 
 namespace SallyBot.Extras
 {
     public static class Functions
     {
         // here is the default URL for stable diffusion web ui with --API param enabled in the launch parameters
-        public static string stableDiffUrl = "http://127.0.0.1:7861";
+        public static string stableDiffUrl = DI.Resolve<Configuration>().StableDiffusionUrl;
         public static string imgFormatString = string.Empty;
 
         public static string IsSimilarToBannedWords(string input, List<string> bannedWords)

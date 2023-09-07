@@ -16,8 +16,10 @@ using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-
+using Autofac;
+using sallybot;
 using SallyBot.Extras;
+using Configuration = sallybot.Configuration;
 
 namespace SallyBot
 {
@@ -37,8 +39,8 @@ namespace SallyBot
         private static int loopCounts = 0;
         private static int maxChatHistoryStrLength = 500; // max chat history length (you can go to like 4800 before errors with oobabooga)(subtract character prompt length if you are using one)
 
-        private const string oobServer = "127.0.0.1";
-        private const int oobServerPort = 5000;
+        //private const string oobServer = "127.0.0.1";
+        //private const int oobServerPort = 5000;
 
         // by default, use extension API not the default API
         private static string oobApiEndpoint = "/api/v1/generate"; // default api is busted atm. enable this with --extensions api in launch args
@@ -82,45 +84,49 @@ namespace SallyBot
 
         private static string token = string.Empty;
 
-        private static List<string> bannedWords = new List<string>
-        {
-            // Add your list of banned words here to automatically catch close misspellings
-            // This filter uses special code to match any word you fill in this list even if they misspell it a little bit
-            // The misspelling feature only works for 5 letter words and above.
-            "p0rnography", "h3ntai"
-            // You don't need to misspell the word in this list, it detects misspellings automatically. I just did that because I don't want github banning me.
-        };
+        //private static List<string> bannedWords = new List<string>
+        //{
+        //    // Add your list of banned words here to automatically catch close misspellings
+        //    // This filter uses special code to match any word you fill in this list even if they misspell it a little bit
+        //    // The misspelling feature only works for 5 letter words and above.
+        //    "p0rnography", "h3ntai"
+        //    // You don't need to misspell the word in this list, it detects misspellings automatically. I just did that because I don't want github banning me.
+        //};
 
 
         // List of banned words that only detects exact matches.
         // The word "naked", for example, is similar to "taken" etc.
         // so it is better to put it in this list instead of the misspelling detection filter.
-        private const string bannedWordsExact = @"\b(naked|boobs|explicit|nsfw|p0rn|pron|pr0n|butt|booty|s3x|n4ked|r34)\b";
+        //private const string bannedWordsExact = @"\b(naked|boobs|explicit|nsfw|p0rn|pron|pr0n|butt|booty|s3x|n4ked|r34)\b";
 
         // These are the words used to detect when you want to take a photo.
         // For example: When words such as "take" and then another matching word such as "photo" appear in a sentence, a photo is requested.
-        private const string takeAPicRegexStr = @"\b(take|post|paint|generate|make|draw|create|show|give|snap|capture|send|display|share|shoot|see|provide|another)\b.*(\S\s{0,10})?(image|picture|screenshot|screenie|painting|pic|photo|photograph|portrait|selfie)\b";
-        private const string promptEndDetectionRegexStr = @"(?:\r\n?)|(\n\[|\n#|\[end|<end|]:|>:|<nooutput|<noinput|\[human|\[chat|\[sally|\[cc|<chat|<cc|\[@chat|\[@cc|bot\]:|<@chat|<@cc|\[.*]: |\[.*] : |\[[^\]]+\]\s*:)";
-        private const string promptSpoofDetectionRegexStr = @"\[[^\]]+[\]:\\]\:|\:\]|\[^\]]";
+        //private const string takeAPicRegexStr = @"\b(take|post|paint|generate|make|draw|create|show|give|snap|capture|send|display|share|shoot|see|provide|another)\b.*(\S\s{0,10})?(image|picture|screenshot|screenie|painting|pic|photo|photograph|portrait|selfie)\b";
+        //private const string promptEndDetectionRegexStr = @"(?:\r\n?)|(\n\[|\n#|\[end|<end|]:|>:|<nooutput|<noinput|\[human|\[chat|\[sally|\[cc|<chat|<cc|\[@chat|\[@cc|bot\]:|<@chat|<@cc|\[.*]: |\[.*] : |\[[^\]]+\]\s*:)";
+        //private const string promptSpoofDetectionRegexStr = @"\[[^\]]+[\]:\\]\:|\:\]|\[^\]]";
 
         // detects ALL types of links, useful for detecting scam links that need to be copied and pasted but don't format to clickable URLs
-        private const string linkDetectionRegexStr = @"[a-zA-Z0-9]((?i) dot |(?i) dotcom|(?i)dotcom|(?i)dotcom |\.|\. | \.| \. |\,)[a-zA-Z]*((?i) slash |(?i) slash|(?i)slash |(?i)slash|\/|\/ | \/| \/ ).+[a-zA-Z0-9]";
+        //private const string linkDetectionRegexStr = @"[a-zA-Z0-9]((?i) dot |(?i) dotcom|(?i)dotcom|(?i)dotcom |\.|\. | \.| \. |\,)[a-zA-Z]*((?i) slash |(?i) slash|(?i)slash |(?i)slash|\/|\/ | \/| \/ ).+[a-zA-Z0-9]";
         private const string pingAndChannelTagDetectFilterRegexStr = @"<[@#]\d{15,}>";
         private readonly string botNameMatchRegexStr = @$"(?:{botName}\?|{botName},)";
 
-        private readonly Regex takeAPicRegex = new Regex(takeAPicRegexStr, RegexOptions.IgnoreCase);
+        private Regex takeAPicRegex => new Regex(DI.Resolve<Configuration>().ParamInfo.TakeAPicRegex, RegexOptions.IgnoreCase);
 
         public static async Task Main() => await new Program().AsyncMain();
 
         private async Task AsyncMain()
         {
-            //AppDomain.CurrentDomain.FirstChanceException += (sender, eventArgs) =>
-            //{
-            //    Console.WriteLine(eventArgs.Exception.ToString());
-            //};
+
+            var configData = JsonConvert.DeserializeObject<sallybot.Configuration>(File.ReadAllText("appsettings.json"));
+            DI.Init(builder =>
+            {
+                builder.RegisterInstance(configData);
+            });
 
             try
             {
+                botName = DI.Resolve<Configuration>().BotName;
+                
                 Client = new DiscordSocketClient(new DiscordSocketConfig
                 {
                     MessageCacheSize = 1200,
@@ -312,10 +318,12 @@ namespace SallyBot
                             }
 
                             // replace [FakeUserNameHere!]: these bracketed statements etc. so nobody can spoof fake chat logs to the bot
-                            string spoofRemovedDownloadedMsg = Regex.Replace(downloadedMsg.Content, promptSpoofDetectionRegexStr, "");
+                            string spoofRemovedDownloadedMsg = Regex.Replace(downloadedMsg.Content,
+                                DI.Resolve<Configuration>().ParamInfo.PromptSpoofDetectionRegexStr, "");
                             oobaboogaChatHistory = $"[{downloadedMsgUserName}]: {Regex.Replace(downloadedMsg.Content, pingAndChannelTagDetectFilterRegexStr, "")}{imagePresent}\n" +
                                 oobaboogaChatHistory;
-                            oobaboogaChatHistory = Regex.Replace(oobaboogaChatHistory, linkDetectionRegexStr, "<url>");
+                            oobaboogaChatHistory = Regex.Replace(oobaboogaChatHistory,
+                                DI.Resolve<Configuration>().ParamInfo.LinkDetectionRegexStr, "<url>");
                         }
                     }
 
@@ -369,7 +377,7 @@ namespace SallyBot
                     //    }
                     //}
 
-                    string oobaBoogaChatHistoryDetectedWords = Functions.IsSimilarToBannedWords(oobaboogaChatHistory, bannedWords);
+                    string oobaBoogaChatHistoryDetectedWords = Functions.IsSimilarToBannedWords(oobaboogaChatHistory, DI.Resolve<Configuration>().ParamInfo.BannedWords);
                     string removedWords = string.Empty; // used if words are removed
                     if (oobaBoogaChatHistoryDetectedWords.Length > 2) // Threshold set to 2
                     {
@@ -421,12 +429,13 @@ namespace SallyBot
                 inputMsg = Regex.Replace(inputMsg, @"\n", " ");
 
                 // replace [FakeUserNameHere!]: these bracketed statements etc. so nobody can spoof fake chat logs to the bot
-                inputMsg = Regex.Replace(inputMsg, promptSpoofDetectionRegexStr, "");
+                inputMsg = Regex.Replace(inputMsg, DI.Resolve<Configuration>().ParamInfo.PromptSpoofDetectionRegexStr, "");
 
                 // formats the message in chat format
                 string inputMsgFiltered = $"[{msgUsernameClean}]: {inputMsg}";
 
-                string msgDetectedWords = Functions.IsSimilarToBannedWords(inputMsgFiltered, bannedWords);
+                string msgDetectedWords = Functions.IsSimilarToBannedWords(inputMsgFiltered,
+                    DI.Resolve<Configuration>().ParamInfo.BannedWords);
                 if (msgDetectedWords.Length > 2) // Threshold set to only check messages greater than 2 characters
                 {
                     foreach (string word in msgDetectedWords.Split(' '))
@@ -622,7 +631,8 @@ namespace SallyBot
                                         inputPromptEndingPic).Trim(),
                                         pingAndChannelTagDetectFilterRegexStr, ""); // <--- filters pings and channel tags out of image prompt
 
-                string msgDetectedWords = Functions.IsSimilarToBannedWords(oobaboogaInputPrompt, bannedWords);
+                string msgDetectedWords = Functions.IsSimilarToBannedWords(oobaboogaInputPrompt,
+                    DI.Resolve<Configuration>().ParamInfo.BannedWords);
                 if (msgDetectedWords.Length > 2) // Threshold set to 2
                 {
                     foreach (string word in msgDetectedWords.Split(' '))
@@ -638,7 +648,8 @@ namespace SallyBot
                     }
                 }
                 // cut out exact matching banned words from the list at the top of this file
-                oobaboogaInputPrompt = Regex.Replace(oobaboogaInputPrompt, bannedWordsExact, "");
+                oobaboogaInputPrompt = Regex.Replace(oobaboogaInputPrompt,
+                    DI.Resolve<Configuration>().ParamInfo.BannedWordsExactRegex, "");
                 // remove bot name query strings from the SD image prompt
                 oobaboogaInputPrompt = Regex.Replace(oobaboogaInputPrompt, botNameMatchRegexStr, "");
                 // remove any remaining instances of the bot name explicitly from the prompt
@@ -654,7 +665,7 @@ namespace SallyBot
             }
 
             var httpClient = new HttpClient();
-            var apiUrl = $"http://{oobServer}:{oobServerPort}{oobApiEndpoint}";
+            var apiUrl = $"http://{DI.Resolve<Configuration>().OobServerUrl}:{DI.Resolve<Configuration>().OobServerPort}{oobApiEndpoint}";
 
             int tokenCount = 250;
 
@@ -720,12 +731,12 @@ namespace SallyBot
                 {
                     var payload = JsonConvert.SerializeObject(new object[] { oobaboogaInputPrompt, parameters });
                     var content = new StringContent(JsonConvert.SerializeObject(new { data = new[] { payload } }), Encoding.UTF8, "application/json");
-                    response = await httpClient.PostAsync($"http://{oobServer}:{oobServerPort}/run/textgen", content);
+                    response = await httpClient.PostAsync($"http://{DI.Resolve<Configuration>().OobServerUrl}:{DI.Resolve<Configuration>().OobServerPort}/run/textgen", content);
                 }
             }
             catch
             {
-                Console.WriteLine($"Warning: Oobabooga server not found on port {oobServerPort}.\n" +
+                Console.WriteLine($"Warning: Oobabooga server not found on port {DI.Resolve<Configuration>().OobServerPort}.\n" +
                     $"In Oobabooga start-webui.bat, enable these args: --extensions api --notebook");
 
                 if (dalaiConnected == false)
@@ -751,7 +762,8 @@ namespace SallyBot
                 return;
             }
 
-            string oobaBoogaImgPromptDetectedWords = Functions.IsSimilarToBannedWords(botReply, bannedWords);
+            string oobaBoogaImgPromptDetectedWords = Functions.IsSimilarToBannedWords(botReply,
+                DI.Resolve<Configuration>().ParamInfo.BannedWords);
 
             if (oobaBoogaImgPromptDetectedWords.Length > 2) // Threshold set to 2
             {
@@ -771,7 +783,8 @@ namespace SallyBot
             string botChatLineFormatted = string.Empty;
             // trim off the input prompt AND any immediate newlines from the final message
             string llmMsgBeginTrimmed = botReply.Replace(oobaboogaInputPrompt, "").Trim();
-            var promptEndMatch = Regex.Match(llmMsgBeginTrimmed, promptEndDetectionRegexStr);
+            var promptEndMatch = Regex.Match(llmMsgBeginTrimmed,
+                DI.Resolve<Configuration>().ParamInfo.PromptEndDetectionRegexStr);
             if (takeAPicMatch)  // if this was detected as a picture request
             {
                 // find the next prompt end detected string
@@ -847,7 +860,8 @@ namespace SallyBot
             // or else if this is not an image request, start processing the reply for regular message content
             else if (llmMsgBeginTrimmed.Contains(oobaboogaInputPromptStart))
             {
-                int llmMsgEndIndex = Regex.Match(llmMsgBeginTrimmed, promptEndDetectionRegexStr).Index; // find the next prompt end detected string
+                int llmMsgEndIndex = Regex.Match(llmMsgBeginTrimmed,
+                    DI.Resolve<Configuration>().ParamInfo.PromptEndDetectionRegexStr).Index; // find the next prompt end detected string
                 string llmMsg = string.Empty;
                 if (llmMsgEndIndex > 0)
                 {
@@ -972,7 +986,8 @@ namespace SallyBot
                 if (!botLooping)
                 {
                     botChatLineFormatted = $"{oobaboogaInputPromptEnd}{llmMsgRepeatLetterTrim}\n"; // format the msg from the bot into a formatted chat line
-                    oobaboogaChatHistory += Regex.Replace(botChatLineFormatted, linkDetectionRegexStr, "url removed"); // writes bot's reply to the chat history
+                    oobaboogaChatHistory += Regex.Replace(botChatLineFormatted,
+                        DI.Resolve<Configuration>().ParamInfo.LinkDetectionRegexStr, "url removed"); // writes bot's reply to the chat history
                 }
                 Console.WriteLine(botChatLineFormatted.Trim()); // write in console so we can see it too
 
@@ -996,11 +1011,11 @@ namespace SallyBot
 
             typingTicks = 0;
 
-            Regex takeAPicRegex = new Regex(takeAPicRegexStr, RegexOptions.IgnoreCase);
+            Regex takeAPicRegex = new Regex(DI.Resolve<Configuration>().ParamInfo.TakeAPicRegex, RegexOptions.IgnoreCase);
 
             string msgUsernameClean = Regex.Replace(Msg.Author.Username, "[^a-zA-Z0-9]+", "");
 
-            Regex promptEndDetectionRegex = new Regex(promptEndDetectionRegexStr, RegexOptions.IgnoreCase);
+            Regex promptEndDetectionRegex = new Regex(DI.Resolve<Configuration>().ParamInfo.PromptEndDetectionRegexStr, RegexOptions.IgnoreCase);
 
             string inputMsg = inputMsgFiltered
                 .Replace("\n", "")
@@ -1039,9 +1054,10 @@ namespace SallyBot
             }
 
             // cut out exact matching banned words from the list at the top of this file
-            inputMsg = Regex.Replace(inputMsg, bannedWordsExact, "");
+            inputMsg = Regex.Replace(inputMsg, DI.Resolve<Configuration>().ParamInfo.BannedWordsExactRegex, "");
 
-            string detectedWords = Functions.IsSimilarToBannedWords(inputMsg, bannedWords);
+            string detectedWords = Functions.IsSimilarToBannedWords(inputMsg,
+                DI.Resolve<Configuration>().ParamInfo.BannedWords);
 
             if (detectedWords.Length > 2) // Threshold set to 2
             {
@@ -1231,13 +1247,15 @@ namespace SallyBot
 
                         if (llmFinalMsgUnescaped.Length < 1) { return; } // if the msg is 0 characters long, ignore ending text and keep on listening
 
-                        string llmPrompt = Regex.Replace(llmFinalMsgUnescaped, takeAPicRegexStr, "");
+                        string llmPrompt = Regex.Replace(llmFinalMsgUnescaped,
+                            DI.Resolve<Configuration>().ParamInfo.TakeAPicRegex, "");
                         imgListening = false;
                         llmMsg = string.Empty;
                         promptEndDetected = false;
                         inputMsg = string.Empty;
 
-                        string detectedWords = Functions.IsSimilarToBannedWords(llmPrompt, bannedWords);
+                        string detectedWords = Functions.IsSimilarToBannedWords(llmPrompt,
+                            DI.Resolve<Configuration>().ParamInfo.BannedWords);
 
                         if (detectedWords.Length > 2) // Threshold set to 2
                         {
