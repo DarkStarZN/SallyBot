@@ -22,7 +22,7 @@ namespace SallyBot.Extras
     public static class Functions
     {
         // here is the default URL for stable diffusion web ui with --API param enabled in the launch parameters
-        public static string stableDiffUrl = "http://127.0.0.1:7860";
+        public static string stableDiffUrl = "http://127.0.0.1:7861";
         public static string imgFormatString = string.Empty;
 
         public static string IsSimilarToBannedWords(string input, List<string> bannedWords)
